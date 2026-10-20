@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches:
-      - dev
+      - main
   workflow_dispatch:
 
 # Cancel any in-progress run on the same branch to avoid queuing stale builds
