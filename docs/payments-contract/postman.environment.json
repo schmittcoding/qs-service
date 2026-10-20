@@ -1,0 +1,36 @@
+{
+  "name": "RAN Online GS Payments — local values only",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:5010",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "cookie_name",
+      "value": "YXGames",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "session_cookie",
+      "value": "",
+      "enabled": true,
+      "type": "secret"
+    },
+    {
+      "key": "admin_jwt",
+      "value": "",
+      "enabled": true,
+      "type": "secret"
+    },
+    {
+      "key": "id",
+      "value": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "enabled": true,
+      "type": "default"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

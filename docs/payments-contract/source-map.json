@@ -1,0 +1,20 @@
+{
+  "contract_date": "2026-10-16",
+  "sha256": {
+    "ran-access-point/src/routes/payments/mod.rs": "e1d636177abf151a8d4857bd736f8af09a1f35b52d36abe3dae6107e700183af",
+    "ran-access-point/src/routes/admin/recharge/mod.rs": "c963de8bbd807f2b56089460f1150ddd8fe50721fcb9c082168a66ac6b676574",
+    "ran-access-point/src/routes/payments/paymongo_integration.rs": "be90601ec2430cedf7ecff716356c5466b8db7864672e46163d8230422d3f24e",
+    "ran-access-point/src/routes/mod.rs": "0e18c4af4caada1b39216780b7b3d83159b3d0447afcd9b5521b6bc9a920e218",
+    "ran-access-point/src/routes/admin/mod.rs": "c2454cee5d5aedcebdb9cf75d59b6802a03d5f77008a23fe6662005c7f223c08",
+    "ran-access-point/src/services/jwt.rs": "08f3d05b7179879971cf2d475c875dc5e8cfe8f787ac5ecf6a0c472d954a4a2b",
+    "ran-access-point/src/middleware/session/mod.rs": "138261b6e167e3ff8b52e54c3c8a8f50415c7888084fea44e615617b7c9c2a45",
+    "ran-models/src/payments/mod.rs": "a33fb51266854a453e291a66c7d353c3b6cf68000e1fd57d92424506cb4a02b6",
+    "ran-models/src/payments/gcash/mod.rs": "afb4439f9ce7298acd18e11a0f671acdea76bd9e59225861caa73b44e24d620d",
+    "ran-models/src/payments/wise/mod.rs": "92eb018c8f5cda11bdf79c1dcfc89fdd256a961960dbbac800db2f7d5d71c460",
+    "ran-models/src/admin/mod.rs": "ed9578c977119a52718579957ab7c57de77d0d94a4a0cb3e29a462373bab338e",
+    "ran-models/src/lib.rs": "667220f8a414218748a7b247fb73274586c767727522ffcc9364aaf78dd88fe7",
+    "ran-db-core/src/webmanager/transaction/mod.rs": "10ffd0fd18aa61bc07a4d0949cbf7efcf921c60ba857e9b3ddd6e7e5521f1cc9",
+    "db-scripts/webdb/Procedures/Administration/sp_GetWebTransactions.sql": "f3701f292e91e96412d08de3ade9afd85e081cb49111bc481d4875a5ae267f30",
+    "db-scripts/webdb/Triggers/trg_AddWebPoints.sql": "06d58b420b957900b16b6f7514f814a13682da641d98a807e672faa46a15b5a9"
+  }
+}

@@ -1,0 +1,20 @@
+USE [RanWeb]
+GO
+
+CREATE TABLE WebUser (
+    UserID        UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID(), -- Generates UUIDs automatically
+    UserNum      BIGINT NOT NULL DEFAULT 1,
+    UserType     SMALLINT NOT NULL DEFAULT 1,
+    UserName     NVARCHAR(20) NOT NULL,
+    UserAvailable BIT NOT NULL DEFAULT 1,
+    UserEmail    NVARCHAR(100) NOT NULL,
+    WebPin       NVARCHAR(6) NOT NULL,
+    WebPoints    MONEY NOT NULL DEFAULT 0,
+    UserVerified  BIT NOT NULL DEFAULT 0,
+    UserVerificationToken NVARCHAR(100) NULL,
+    UserFullName    NVARCHAR(MAX) NOT NULL,
+    CreatedAt   DATETIME NOT NULL DEFAULT GETDATE(),
+    UpdatedAt   DATETIME NOT NULL DEFAULT GETDATE(),
+    PRIMARY KEY (UserID),
+	CONSTRAINT UQ_UserID UNIQUE (UserID)
+)

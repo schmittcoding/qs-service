@@ -1,0 +1,180 @@
+{
+  "paths": {
+    "/api/v1/payments/webhook/paypal": {
+      "post": {
+        "tags": ["Provider webhooks"],
+        "operationId": "webhookPayPal",
+        "summary": "Receive PayPal order/capture events",
+        "description": "Server-to-server, called by PayPal. NO signature verification is performed (the HMAC verifier is commented out), so anyone who can reach the URL can post events. Body is parsed as free-form JSON; only the fields in PayPalWebhookEvent are read. The handler checks, in order: `resource` present, `resource.id` string present, `event_type` present, then dispatches:\n\n- CHECKOUT.ORDER.APPROVED: captures the order through the PayPal API using resource.id. Does NOT change the transaction status; the later PAYMENT.CAPTURE.COMPLETED does. Invalidates the buyer's profile cache when the invoice ID resolves.\n- PAYMENT.CAPTURE.COMPLETED: sets the transaction (invoice ID) to status 1 → trigger credits points; invalidates the profile cache.\n- CHECKOUT.CAPTURE.COMPLETED: same branch, but its status mapping is 0, so it updates Pending→Pending (no effect).\n- PAYMENT.CAPTURE.DENIED / PAYMENT.CAPTURE.DECLINED: sets status 2; update failures are only logged.\n- anything else: acknowledged, not processed.\n\nThe transaction UUID (invoice ID) is read from resource.invoice_id, else resource.purchase_units[0].invoice_id, else resource.custom. Status updates only apply to Pending (0) rows; a repeat delivery after settlement fails the update and returns 500 for the COMPLETED branch.",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L716", "ran-access-point/src/routes/payments/mod.rs#L1116", "ran-access-point/src/routes/payments/mod.rs#L1142"],
+        "x-caller": "PayPal",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {
+            "schema": {"$ref": "#/components/schemas/PayPalWebhookEvent"},
+            "examples": {
+              "capture_completed": {"summary": "PAYMENT.CAPTURE.COMPLETED", "value": {"id": "WH-58D329510W468432D-8HN650336L201105X", "event_type": "PAYMENT.CAPTURE.COMPLETED", "resource": {"id": "2GG279541U471931P", "invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5", "status": "COMPLETED"}}},
+              "order_approved": {"summary": "CHECKOUT.ORDER.APPROVED", "value": {"id": "WH-COC11055RA711503B-4YM959094A144403T", "event_type": "CHECKOUT.ORDER.APPROVED", "resource": {"id": "5O190127TN364715T", "status": "APPROVED", "purchase_units": [{"invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"}]}}},
+              "capture_denied": {"summary": "PAYMENT.CAPTURE.DENIED", "value": {"id": "WH-1JE36889N6046023R-3T9271440V557134J", "event_type": "PAYMENT.CAPTURE.DENIED", "resource": {"id": "7NW873794T343360M", "invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5", "status": "DECLINED"}}}
+            }
+          }}
+        },
+        "responses": {
+          "200": {
+            "description": "Processed or acknowledged. message is one of 'Webhook processed successfully', 'Capture successful', 'Payment declined webhook received', 'Webhook received, but not processed'.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookMessage"}, "example": {"message": "Webhook processed successfully"}}}
+          },
+          "400": {
+            "description": "Missing resource / resource.id / event_type, missing invoice ID on a COMPLETED event, or an invoice ID that is not a UUID. Malformed JSON returns actix plain text.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/WebhookMessage"}, "examples": {
+                "no_resource": {"value": {"message": "Missing resources in webhook payload"}},
+                "no_order_id": {"value": {"message": "Missing order_id in webhook payload"}},
+                "no_event_type": {"value": {"message": "Missing event_type in webhook payload"}},
+                "no_invoice": {"value": {"message": "Missing custom_id in webhook payload"}},
+                "bad_uuid": {"value": {"message": "Invalid transaction UUID"}}
+              }},
+              "text/plain": {"schema": {"type": "string"}}
+            }
+          },
+          "415": {"description": "Content-Type is not application/json (actix JSON extractor).", "content": {"text/plain": {"schema": {"type": "string"}}}},
+          "500": {
+            "description": "Status update failed on a COMPLETED event (including the transaction is no longer Pending), or the PayPal capture call failed. PayPal retries non-2xx deliveries.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookMessage"}, "examples": {
+              "update_failed": {"value": {"message": "Failed to process transaction"}},
+              "capture_failed": {"value": {"message": "Failed to capture order"}}
+            }}}
+          }
+        }
+      }
+    },
+    "/api/v1/payments/webhook/paymongo": {
+      "post": {
+        "tags": ["Provider webhooks"],
+        "operationId": "webhookPayMongo",
+        "summary": "Receive PayMongo payment events",
+        "description": "Server-to-server, called by PayMongo. NO signature verification (PayMongo-Signature check is commented out). The raw body is read as UTF-8 and parsed as PayMongoWebhookPayload. Event type = data.attributes.type:\n\n- payment.paid: sets the transaction to status 1 → trigger credits points.\n- payment.failed: sets the transaction to status 2.\n- anything else: ignored.\n\nThe transaction UUID is data.attributes.data.attributes.metadata.transaction_id (copied by PayMongo from the checkout session metadata set at purchase). The handler ALWAYS answers 200 text/plain 'Webhook received and processed' once the payload parses — including unknown events, a missing transaction_id, and failed status updates — so PayMongo never retries those. The buyer's profile cache is NOT invalidated here (unlike PayPal).",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L875", "ran-access-point/src/routes/payments/mod.rs#L1184", "ran-access-point/src/routes/payments/paymongo_integration.rs#L205"],
+        "x-caller": "PayMongo",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {
+            "schema": {"$ref": "#/components/schemas/PayMongoWebhookPayload"},
+            "examples": {
+              "payment_paid": {"summary": "payment.paid", "value": {"data": {"id": "evt_example123", "type": "event", "attributes": {"type": "payment.paid", "livemode": false, "data": {"id": "pay_example456", "type": "payment", "attributes": {"amount": 49900, "currency": "PHP", "status": "paid", "metadata": {"transaction_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"}}}, "created_at": 1792130000, "updated_at": 1792130000}}}},
+              "payment_failed": {"summary": "payment.failed", "value": {"data": {"id": "evt_example789", "type": "event", "attributes": {"type": "payment.failed", "livemode": false, "data": {"id": "pay_example012", "type": "payment", "attributes": {"status": "failed", "metadata": {"transaction_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"}}}, "created_at": 1792130000, "updated_at": 1792130000}}}}
+            }
+          }}
+        },
+        "responses": {
+          "200": {
+            "description": "Always this body once the payload parses, whatever happened afterwards.",
+            "content": {"text/plain": {"schema": {"const": "Webhook received and processed"}}}
+          },
+          "400": {
+            "description": "Body is not UTF-8 ('Invalid UTF-8 payload'), does not match PayMongoWebhookPayload ('Invalid payload format'), inner attributes lack `metadata` ('Error processing payment.paid event' / 'Error processing payment.failed event') — all text/plain — or metadata.transaction_id is not a UUID (JSON, note the trailing space in the message).",
+            "content": {
+              "text/plain": {"schema": {"type": "string", "enum": ["Invalid UTF-8 payload", "Invalid payload format", "Error processing payment.paid event", "Error processing payment.failed event"]}},
+              "application/json": {"schema": {"$ref": "#/components/schemas/WebhookMessage"}, "example": {"message": "Invalid transaction UUID "}}
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WebhookMessage": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {"message": {"type": "string"}},
+        "additionalProperties": false,
+        "examples": [{"message": "Webhook processed successfully"}]
+      },
+      "PayPalWebhookEvent": {
+        "type": "object",
+        "x-rust-type": "serde_json::Value (read by key; no struct)",
+        "description": "PayPal webhook event. Only the listed fields are read; everything else PayPal sends is ignored.",
+        "required": ["event_type", "resource"],
+        "properties": {
+          "event_type": {"type": "string", "description": "CHECKOUT.ORDER.APPROVED, PAYMENT.CAPTURE.COMPLETED, CHECKOUT.CAPTURE.COMPLETED, PAYMENT.CAPTURE.DENIED, PAYMENT.CAPTURE.DECLINED are handled; others are acknowledged."},
+          "resource": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": {"type": "string", "description": "Order ID (order events) or capture ID (capture events). Used for the capture call on CHECKOUT.ORDER.APPROVED."},
+              "invoice_id": {"type": "string", "format": "uuid", "description": "Capture events: our WebTransaction.transaction_id. Checked first."},
+              "purchase_units": {"type": "array", "items": {"type": "object", "properties": {"invoice_id": {"type": "string", "format": "uuid"}}}, "description": "Order events: purchase_units[0].invoice_id is checked second."},
+              "custom": {"type": "string", "description": "Legacy payment events: checked last."}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "PayMongoWebhookPayload": {
+        "type": "object",
+        "x-rust-type": "PayMongoWebhookPayload (ran-access-point/src/routes/payments/paymongo_integration.rs)",
+        "x-source": "ran-access-point/src/routes/payments/paymongo_integration.rs#L238",
+        "required": ["data"],
+        "properties": {"data": {"$ref": "#/components/schemas/PayMongoWebhookData"}},
+        "additionalProperties": true
+      },
+      "PayMongoWebhookData": {
+        "type": "object",
+        "x-rust-type": "PayMongoWebhookData",
+        "x-source": "ran-access-point/src/routes/payments/paymongo_integration.rs#L230",
+        "required": ["id", "type", "attributes"],
+        "properties": {
+          "id": {"type": "string", "description": "Event ID (evt_...)."},
+          "type": {"type": "string", "description": "Rust field object_type, renamed to \"type\". Normally \"event\"."},
+          "attributes": {"$ref": "#/components/schemas/PayMongoWebhookAttributes"}
+        },
+        "additionalProperties": true
+      },
+      "PayMongoWebhookAttributes": {
+        "type": "object",
+        "x-rust-type": "PayMongoWebhookAttributes",
+        "x-source": "ran-access-point/src/routes/payments/paymongo_integration.rs#L220",
+        "required": ["type", "livemode", "data", "created_at", "updated_at"],
+        "properties": {
+          "type": {"type": "string", "description": "Rust field event_type, renamed to \"type\". payment.paid and payment.failed are handled."},
+          "livemode": {"type": "boolean"},
+          "data": {"$ref": "#/components/schemas/PayMongoWebhookAttributesData"},
+          "created_at": {"type": "integer", "minimum": 0, "x-rust-type": "u64", "description": "Unix seconds."},
+          "updated_at": {"type": "integer", "minimum": 0, "x-rust-type": "u64", "description": "Unix seconds."}
+        },
+        "additionalProperties": true
+      },
+      "PayMongoWebhookAttributesData": {
+        "type": "object",
+        "x-rust-type": "PayMongoWebhookAttributesData",
+        "x-source": "ran-access-point/src/routes/payments/paymongo_integration.rs#L212",
+        "required": ["id", "type", "attributes"],
+        "properties": {
+          "id": {"type": "string", "description": "Resource ID (pay_...)."},
+          "type": {"type": "string", "description": "Rust field object_type. Normally \"payment\"."},
+          "attributes": {"$ref": "#/components/schemas/PaymentDataAttributes"}
+        },
+        "additionalProperties": true
+      },
+      "PaymentDataAttributes": {
+        "type": "object",
+        "x-rust-type": "PaymentDataAttributes (deserialized from serde_json::Value for handled events only)",
+        "x-source": "ran-access-point/src/routes/payments/paymongo_integration.rs#L206",
+        "description": "Only `metadata` is read. Its Rust type is serde_json::Value (not Option), so the key must be present for handled events.",
+        "required": ["metadata"],
+        "properties": {
+          "metadata": {
+            "type": ["object", "null"],
+            "properties": {"transaction_id": {"type": "string", "format": "uuid", "description": "WebTransaction.transaction_id, set by POST /transaction/{id} when it created the checkout session."}},
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

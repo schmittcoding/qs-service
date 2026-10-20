@@ -1,0 +1,17 @@
+USE RanWeb
+GO
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[sp_GetRegisteredUserCount]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT(*) AS RegisteredCount
+    FROM RanWeb.dbo.WebUser WITH (NOLOCK);
+END
+GO

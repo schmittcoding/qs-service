@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+# Cancel any in-progress run on the same branch to avoid queuing stale builds
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-2022
+
+    permissions:
+      contents: read
+      deployments: write
+
+    env:
+      # Disable incremental compilation in CI — smaller cache, no stale artifact issues
+      CARGO_INCREMENTAL: "0"
+      # Faster linker error output
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build Rust Release
+        run: cargo build --release --locked
+
+      - name: Upload Windows Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ran-api-exe
+          path: target/release/*.exe

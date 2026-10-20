@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+default-members = [
+    "ran-access-point"
+]
+members = [
+    "ran-access-point",
+    "ran-models",
+    "ran-db-core"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["schmitt (schmiiittt@gmail.com)"]
+description = "A RAN online helper"
+
+[profile.dev]
+opt-level = 1
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = false
+
+
+[workspace.dependencies]
+# Internal
+ran-db-core = { path = "./ran-db-core" }
+ran-models = { path = "./ran-models" }
+
+# External
+actix-web = "4"
+actix-cors = "0.7.0"
+actix-tls = "3.4.0"
+actix-multipart = "0.7.2"
+rustls = {version = "0.20", features = ["dangerous_configuration"] }
+rustls-pemfile = "1.0"
+rustls-pki-types = "1.11.0"
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.139"
+tiberius = { version = "0.12.3", features = ["native-tls", "chrono", "rust_decimal"] }
+deadpool-tiberius = { version = "0.1.8" }
+tokio = { version = "1.0", features = ["full"] }
+dotenvy = "0.15.7"
+futures-util = "0.3"
+jsonwebtoken = "9.3.1"
+actix-session = {version = "0.10.1", features = ["cookie-session"]}
+uuid = { version = "1.15.1", features = ["v4", "serde"] } # For generating unique IDs
+chrono = "0.4.40"
+async-trait = "0.1.86"
+paypal-rs = { version = "0.2.6", features = ["rustls"] }
+anyhow = "1.0.96"
+base64 = "0.22.1"
+aws-config = "1.8.11"
+aws-sdk-s3 = { version = "1.115.0", features = ["behavior-version-latest"] }
+aws-sdk-sesv2 = { version = "1.122.0", features = ["behavior-version-latest"] }
+governor = "0.10.4"
+sha2 = "0.10.9"
+actix-governor = "0.10.0"
+utoipa = { version = "4", features = ["actix_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "7", features = ["actix-web"] }

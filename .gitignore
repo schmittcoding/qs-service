@@ -1,0 +1,48 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Claude
+# .claude
+# workflows/
+
+# Certificates and keys
+certificates/*.pem
+certificates/*.pfx
+certificates/*.key
+certificates/privkey*.pem
+certificates/cert*.pem
+certificates/fullchain*.pem
+certificates/chain*.pem
+ran-access-point/certificates/*.pem
+ran-access-point/certificates/*.pfx
+ran-access-point/certificates/*.key
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+*/.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Test artifacts
+/tmp/
+lcov.info
+tarpaulin-report.html

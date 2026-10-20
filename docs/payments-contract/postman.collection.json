@@ -1,0 +1,1131 @@
+{
+  "info": {
+    "name": "RAN Online GS Payments & Recharge API — 2026-10-16",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Source-derived examples. Fill session_cookie (value of the player session cookie after login) and admin_jwt (from POST /admin/v1/auth/authenticate). No credentials included. Webhook requests are unsigned in the current implementation and would change real transactions."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:5010",
+      "type": "string"
+    },
+    {
+      "key": "cookie_name",
+      "value": "YXGames",
+      "type": "string"
+    },
+    {
+      "key": "session_cookie",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_jwt",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "id",
+      "value": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "GET /api/v1/payments/get-recharge-info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/get-recharge-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "get-recharge-info"
+              ],
+              "query": []
+            },
+            "description": "Returns every RechargeInfo row with RechargeStatus = 1 as a bare JSON array. No session is read; the cookie session middleware still wraps the scope but never rejects. No pagination, no ordering clause (SQL Server row order), no caching (the generic cache is a TODO). The `type` of each package decides which payment method POST /transaction/{id} will use.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/payments/get-recharge-info/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/get-recharge-info/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "get-recharge-info",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Returns the RechargeInfo row regardless of its status (inactive packages are readable here). A nil UUID (all zeroes) returns 400. A missing row is reported as 500, not 404, because the DB layer returns an error that the handler maps to 500.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/transaction/{id} — gcash_with_proof",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{cookie_name}}={{session_cookie}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/transaction/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "transaction",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Requires a signed-in user session whose profile has is_verified = true. Loads the RechargeInfo by path ID, then dispatches on RechargeInfo.type:\n\n- 1 GCash: body REQUIRED, `{\"type\":\"gcash\",...}`. Inserts a pending WebTransaction (type 1) with reference code and optional proof image; an administrator approves it later.\n- 2 PayPal: body MUST BE ABSENT. Inserts a pending WebTransaction (type 2), creates a PayPal order (USD, intent CAPTURE, invoice_id = transaction UUID) and returns the PayPal approval URL. The PayPal webhook settles it.\n- 3 Wise: body REQUIRED, `{\"type\":\"wise\",...}`. Inserts a pending WebTransaction (type 3) with reference code; an administrator approves it later.\n- 4 PayMongo: body MUST BE ABSENT. Inserts a pending WebTransaction (type 4), creates a PayMongo checkout session (PHP centavos, card + gcash, metadata.transaction_id = transaction UUID) and returns its checkout URL as approval_url. The PayMongo webhook settles it.\n\nThe body extractor is Option<Json<TransactionPayload>>: an unparseable, wrong-content-type or oversized (>2 MiB actix default) body is silently treated as absent. Sending a body to a PayPal/PayMongo package, or the wrong tag for the package type, returns 400 'Invalid transaction data'. A Discord notification is spawned after GCash/Wise inserts. Points are credited only when the transaction status later becomes 1 (database trigger trg_AddWebPoints).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"gcash\",\n  \"reference_number\": \"1023456789012\",\n  \"proof_image\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/transaction/{id} — gcash_without_proof",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{cookie_name}}={{session_cookie}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/transaction/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "transaction",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Requires a signed-in user session whose profile has is_verified = true. Loads the RechargeInfo by path ID, then dispatches on RechargeInfo.type:\n\n- 1 GCash: body REQUIRED, `{\"type\":\"gcash\",...}`. Inserts a pending WebTransaction (type 1) with reference code and optional proof image; an administrator approves it later.\n- 2 PayPal: body MUST BE ABSENT. Inserts a pending WebTransaction (type 2), creates a PayPal order (USD, intent CAPTURE, invoice_id = transaction UUID) and returns the PayPal approval URL. The PayPal webhook settles it.\n- 3 Wise: body REQUIRED, `{\"type\":\"wise\",...}`. Inserts a pending WebTransaction (type 3) with reference code; an administrator approves it later.\n- 4 PayMongo: body MUST BE ABSENT. Inserts a pending WebTransaction (type 4), creates a PayMongo checkout session (PHP centavos, card + gcash, metadata.transaction_id = transaction UUID) and returns its checkout URL as approval_url. The PayMongo webhook settles it.\n\nThe body extractor is Option<Json<TransactionPayload>>: an unparseable, wrong-content-type or oversized (>2 MiB actix default) body is silently treated as absent. Sending a body to a PayPal/PayMongo package, or the wrong tag for the package type, returns 400 'Invalid transaction data'. A Discord notification is spawned after GCash/Wise inserts. Points are credited only when the transaction status later becomes 1 (database trigger trg_AddWebPoints).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"gcash\",\n  \"reference_number\": \"1023456789012\",\n  \"proof_image\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/transaction/{id} — wise",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{cookie_name}}={{session_cookie}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/transaction/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "transaction",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Requires a signed-in user session whose profile has is_verified = true. Loads the RechargeInfo by path ID, then dispatches on RechargeInfo.type:\n\n- 1 GCash: body REQUIRED, `{\"type\":\"gcash\",...}`. Inserts a pending WebTransaction (type 1) with reference code and optional proof image; an administrator approves it later.\n- 2 PayPal: body MUST BE ABSENT. Inserts a pending WebTransaction (type 2), creates a PayPal order (USD, intent CAPTURE, invoice_id = transaction UUID) and returns the PayPal approval URL. The PayPal webhook settles it.\n- 3 Wise: body REQUIRED, `{\"type\":\"wise\",...}`. Inserts a pending WebTransaction (type 3) with reference code; an administrator approves it later.\n- 4 PayMongo: body MUST BE ABSENT. Inserts a pending WebTransaction (type 4), creates a PayMongo checkout session (PHP centavos, card + gcash, metadata.transaction_id = transaction UUID) and returns its checkout URL as approval_url. The PayMongo webhook settles it.\n\nThe body extractor is Option<Json<TransactionPayload>>: an unparseable, wrong-content-type or oversized (>2 MiB actix default) body is silently treated as absent. Sending a body to a PayPal/PayMongo package, or the wrong tag for the package type, returns 400 'Invalid transaction data'. A Discord notification is spawned after GCash/Wise inserts. Points are credited only when the transaction status later becomes 1 (database trigger trg_AddWebPoints).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"wise\",\n  \"reference_number\": \"P123456789\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/transaction/{id} — no body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{cookie_name}}={{session_cookie}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/transaction/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "transaction",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Requires a signed-in user session whose profile has is_verified = true. Loads the RechargeInfo by path ID, then dispatches on RechargeInfo.type:\n\n- 1 GCash: body REQUIRED, `{\"type\":\"gcash\",...}`. Inserts a pending WebTransaction (type 1) with reference code and optional proof image; an administrator approves it later.\n- 2 PayPal: body MUST BE ABSENT. Inserts a pending WebTransaction (type 2), creates a PayPal order (USD, intent CAPTURE, invoice_id = transaction UUID) and returns the PayPal approval URL. The PayPal webhook settles it.\n- 3 Wise: body REQUIRED, `{\"type\":\"wise\",...}`. Inserts a pending WebTransaction (type 3) with reference code; an administrator approves it later.\n- 4 PayMongo: body MUST BE ABSENT. Inserts a pending WebTransaction (type 4), creates a PayMongo checkout session (PHP centavos, card + gcash, metadata.transaction_id = transaction UUID) and returns its checkout URL as approval_url. The PayMongo webhook settles it.\n\nThe body extractor is Option<Json<TransactionPayload>>: an unparseable, wrong-content-type or oversized (>2 MiB actix default) body is silently treated as absent. Sending a body to a PayPal/PayMongo package, or the wrong tag for the package type, returns 400 'Invalid transaction data'. A Discord notification is spawned after GCash/Wise inserts. Points are credited only when the transaction status later becomes 1 (database trigger trg_AddWebPoints).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/payments/get-gateway-info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/get-gateway-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "get-gateway-info"
+              ],
+              "query": []
+            },
+            "description": "Returns GatewayInfo rows with GatewayStatus = 1 (filtered in Rust after SELECT *). Gateways are the account details (name, number, QR/logo image) a player pays into for manual methods such as GCash. Rows whose GatewayImage is NULL are silently skipped by the row parser.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/payments/get-recharge-logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{cookie_name}}={{session_cookie}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/get-recharge-logs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "get-recharge-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "1-based page. page=0 underflows `page - 1`: panic in debug builds (overflow-checks), empty `data` in release builds."
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "Page size; values above 100 are clamped to 100."
+                },
+                {
+                  "key": "status",
+                  "value": "0",
+                  "disabled": true,
+                  "description": "Keep only this transaction status."
+                },
+                {
+                  "key": "category",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "Keep only this transaction type (payment method)."
+                }
+              ]
+            },
+            "description": "Requires a user session. Loads every WebTransaction of session.user_num ordered by TransactionTime DESC, filters in memory by `status` and `category` (= transaction type), then paginates in memory. `search`, `start_date`, `end_date` are accepted but ignored. Results are cached per (user_num, page, limit) for 30 seconds; the cache stores the unfiltered list, so filter changes apply immediately but newly created transactions can take up to 30 s to appear.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Provider webhooks",
+      "item": [
+        {
+          "name": "POST /api/v1/payments/webhook/paypal — capture_completed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhook/paypal",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhook",
+                "paypal"
+              ],
+              "query": []
+            },
+            "description": "Server-to-server, called by PayPal. NO signature verification is performed (the HMAC verifier is commented out), so anyone who can reach the URL can post events. Body is parsed as free-form JSON; only the fields in PayPalWebhookEvent are read. The handler checks, in order: `resource` present, `resource.id` string present, `event_type` present, then dispatches:\n\n- CHECKOUT.ORDER.APPROVED: captures the order through the PayPal API using resource.id. Does NOT change the transaction status; the later PAYMENT.CAPTURE.COMPLETED does. Invalidates the buyer's profile cache when the invoice ID resolves.\n- PAYMENT.CAPTURE.COMPLETED: sets the transaction (invoice ID) to status 1 → trigger credits points; invalidates the profile cache.\n- CHECKOUT.CAPTURE.COMPLETED: same branch, but its status mapping is 0, so it updates Pending→Pending (no effect).\n- PAYMENT.CAPTURE.DENIED / PAYMENT.CAPTURE.DECLINED: sets status 2; update failures are only logged.\n- anything else: acknowledged, not processed.\n\nThe transaction UUID (invoice ID) is read from resource.invoice_id, else resource.purchase_units[0].invoice_id, else resource.custom. Status updates only apply to Pending (0) rows; a repeat delivery after settlement fails the update and returns 500 for the COMPLETED branch.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"WH-58D329510W468432D-8HN650336L201105X\",\n  \"event_type\": \"PAYMENT.CAPTURE.COMPLETED\",\n  \"resource\": {\n    \"id\": \"2GG279541U471931P\",\n    \"invoice_id\": \"9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5\",\n    \"status\": \"COMPLETED\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/webhook/paypal — order_approved",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhook/paypal",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhook",
+                "paypal"
+              ],
+              "query": []
+            },
+            "description": "Server-to-server, called by PayPal. NO signature verification is performed (the HMAC verifier is commented out), so anyone who can reach the URL can post events. Body is parsed as free-form JSON; only the fields in PayPalWebhookEvent are read. The handler checks, in order: `resource` present, `resource.id` string present, `event_type` present, then dispatches:\n\n- CHECKOUT.ORDER.APPROVED: captures the order through the PayPal API using resource.id. Does NOT change the transaction status; the later PAYMENT.CAPTURE.COMPLETED does. Invalidates the buyer's profile cache when the invoice ID resolves.\n- PAYMENT.CAPTURE.COMPLETED: sets the transaction (invoice ID) to status 1 → trigger credits points; invalidates the profile cache.\n- CHECKOUT.CAPTURE.COMPLETED: same branch, but its status mapping is 0, so it updates Pending→Pending (no effect).\n- PAYMENT.CAPTURE.DENIED / PAYMENT.CAPTURE.DECLINED: sets status 2; update failures are only logged.\n- anything else: acknowledged, not processed.\n\nThe transaction UUID (invoice ID) is read from resource.invoice_id, else resource.purchase_units[0].invoice_id, else resource.custom. Status updates only apply to Pending (0) rows; a repeat delivery after settlement fails the update and returns 500 for the COMPLETED branch.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"WH-COC11055RA711503B-4YM959094A144403T\",\n  \"event_type\": \"CHECKOUT.ORDER.APPROVED\",\n  \"resource\": {\n    \"id\": \"5O190127TN364715T\",\n    \"status\": \"APPROVED\",\n    \"purchase_units\": [\n      {\n        \"invoice_id\": \"9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/webhook/paypal — capture_denied",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhook/paypal",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhook",
+                "paypal"
+              ],
+              "query": []
+            },
+            "description": "Server-to-server, called by PayPal. NO signature verification is performed (the HMAC verifier is commented out), so anyone who can reach the URL can post events. Body is parsed as free-form JSON; only the fields in PayPalWebhookEvent are read. The handler checks, in order: `resource` present, `resource.id` string present, `event_type` present, then dispatches:\n\n- CHECKOUT.ORDER.APPROVED: captures the order through the PayPal API using resource.id. Does NOT change the transaction status; the later PAYMENT.CAPTURE.COMPLETED does. Invalidates the buyer's profile cache when the invoice ID resolves.\n- PAYMENT.CAPTURE.COMPLETED: sets the transaction (invoice ID) to status 1 → trigger credits points; invalidates the profile cache.\n- CHECKOUT.CAPTURE.COMPLETED: same branch, but its status mapping is 0, so it updates Pending→Pending (no effect).\n- PAYMENT.CAPTURE.DENIED / PAYMENT.CAPTURE.DECLINED: sets status 2; update failures are only logged.\n- anything else: acknowledged, not processed.\n\nThe transaction UUID (invoice ID) is read from resource.invoice_id, else resource.purchase_units[0].invoice_id, else resource.custom. Status updates only apply to Pending (0) rows; a repeat delivery after settlement fails the update and returns 500 for the COMPLETED branch.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"WH-1JE36889N6046023R-3T9271440V557134J\",\n  \"event_type\": \"PAYMENT.CAPTURE.DENIED\",\n  \"resource\": {\n    \"id\": \"7NW873794T343360M\",\n    \"invoice_id\": \"9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5\",\n    \"status\": \"DECLINED\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/webhook/paymongo — payment_paid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhook/paymongo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhook",
+                "paymongo"
+              ],
+              "query": []
+            },
+            "description": "Server-to-server, called by PayMongo. NO signature verification (PayMongo-Signature check is commented out). The raw body is read as UTF-8 and parsed as PayMongoWebhookPayload. Event type = data.attributes.type:\n\n- payment.paid: sets the transaction to status 1 → trigger credits points.\n- payment.failed: sets the transaction to status 2.\n- anything else: ignored.\n\nThe transaction UUID is data.attributes.data.attributes.metadata.transaction_id (copied by PayMongo from the checkout session metadata set at purchase). The handler ALWAYS answers 200 text/plain 'Webhook received and processed' once the payload parses — including unknown events, a missing transaction_id, and failed status updates — so PayMongo never retries those. The buyer's profile cache is NOT invalidated here (unlike PayPal).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"id\": \"evt_example123\",\n    \"type\": \"event\",\n    \"attributes\": {\n      \"type\": \"payment.paid\",\n      \"livemode\": false,\n      \"data\": {\n        \"id\": \"pay_example456\",\n        \"type\": \"payment\",\n        \"attributes\": {\n          \"amount\": 49900,\n          \"currency\": \"PHP\",\n          \"status\": \"paid\",\n          \"metadata\": {\n            \"transaction_id\": \"9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5\"\n          }\n        }\n      },\n      \"created_at\": 1792130000,\n      \"updated_at\": 1792130000\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/payments/webhook/paymongo — payment_failed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhook/paymongo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhook",
+                "paymongo"
+              ],
+              "query": []
+            },
+            "description": "Server-to-server, called by PayMongo. NO signature verification (PayMongo-Signature check is commented out). The raw body is read as UTF-8 and parsed as PayMongoWebhookPayload. Event type = data.attributes.type:\n\n- payment.paid: sets the transaction to status 1 → trigger credits points.\n- payment.failed: sets the transaction to status 2.\n- anything else: ignored.\n\nThe transaction UUID is data.attributes.data.attributes.metadata.transaction_id (copied by PayMongo from the checkout session metadata set at purchase). The handler ALWAYS answers 200 text/plain 'Webhook received and processed' once the payload parses — including unknown events, a missing transaction_id, and failed status updates — so PayMongo never retries those. The buyer's profile cache is NOT invalidated here (unlike PayPal).\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"id\": \"evt_example789\",\n    \"type\": \"event\",\n    \"attributes\": {\n      \"type\": \"payment.failed\",\n      \"livemode\": false,\n      \"data\": {\n        \"id\": \"pay_example012\",\n        \"type\": \"payment\",\n        \"attributes\": {\n          \"status\": \"failed\",\n          \"metadata\": {\n            \"transaction_id\": \"9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5\"\n          }\n        }\n      },\n      \"created_at\": 1792130000,\n      \"updated_at\": 1792130000\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recharge administration",
+      "item": [
+        {
+          "name": "GET /admin/v1/recharge",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "SQL page index; OFFSET = page × limit (see quirk)."
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "Page size. Not clamped."
+                },
+                {
+                  "key": "search",
+                  "value": "EXAMPLE_VALUE",
+                  "disabled": true,
+                  "description": "UserName substring or exact reference code."
+                },
+                {
+                  "key": "method[]",
+                  "value": "[]",
+                  "disabled": true,
+                  "description": "Transaction types to include (Rust field `method`)."
+                },
+                {
+                  "key": "status[]",
+                  "value": "[]",
+                  "disabled": true,
+                  "description": "Transaction statuses to include (Rust field `status`)."
+                }
+              ]
+            },
+            "description": "Primary admin transaction list. Query is parsed with serde_qs (max depth 5, non-strict, so percent-encoded brackets are accepted). Multi-value filters use bracket notation: `?status[]=0&status[]=1&method[]=1&method[]=4` (indexed `status[0]=0` also works). Empty arrays mean no filter. Calls sp_GetWebTransactions: `search` matches UserName LIKE '%search%' OR RefferenceCode = search; rows sort Pending first, then TransactionTime DESC.\n\nPAGINATION QUIRK: the procedure computes OFFSET = page × limit, so it is effectively 0-based. page=1 (the default) skips the first `limit` rows; send page=0 for the first page. page/limit are cast from usize to i16 (truncating); limit is not clamped. Response has no total_pages.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /admin/v1/recharge/recharge-logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/recharge-logs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "recharge-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "1-based page. page=0 underflows `page - 1`: panic in debug builds (overflow-checks), empty `data` in release builds."
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "Page size; values above 100 are clamped to 100."
+                },
+                {
+                  "key": "status",
+                  "value": "0",
+                  "disabled": true,
+                  "description": "Filtered in SQL."
+                },
+                {
+                  "key": "category",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "Transaction type; filtered in memory."
+                },
+                {
+                  "key": "search",
+                  "value": "EXAMPLE_VALUE",
+                  "disabled": true,
+                  "description": "See description."
+                }
+              ]
+            },
+            "description": "Loads ALL WebTransaction rows (or all rows with the given status) ordered by TransactionTime DESC, then filters `category` and `search` and paginates in memory. `search` matches when user_name CONTAINS it (case-sensitive), or equals the transaction_id string, or equals reference_code. start_date/end_date are accepted but ignored. Every row's proof image is base64-encoded into the response. Prefer GET /admin/v1/recharge.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /admin/v1/recharge/update-transaction/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/update-transaction/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "update-transaction",
+                "{{id}}"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "1",
+                  "disabled": false,
+                  "description": "UpdateStatusParams.status (i16)."
+                }
+              ]
+            },
+            "description": "The new status is a QUERY parameter, not a body (any body is ignored). Only rows still Pending (0) are updated; anything else returns 500. Setting 1 fires trigger trg_AddWebPoints, which adds transaction_amount (points) to the buyer's WebUser.WebPoints. Any i16 is accepted (no range check); use 1 (approve) or 2 (decline). On success: the buyer's profile cache is invalidated and a Discord embed is posted to env DISCORD_TRANSACTION_WEBHOOK (skipped if unset). The approving administrator is not recorded (TODO in code) and admin_remarks is not written.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /admin/v1/recharge/update-recharge-info/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/update-recharge-info/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "update-recharge-info",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Full replacement of type, amount, points and status. `discount` is accepted but NOT written (absent from the UPDATE SET clause); the returned row shows the stored discount. Returns the updated row (OUTPUT inserted.*). The handler is registered twice in configure(); only the first registration is reachable.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": 2,\n  \"amount\": 12.0,\n  \"discount\": null,\n  \"points\": 1200.0,\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /admin/v1/recharge/update-gateway-info/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/update-gateway-info/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "update-gateway-info",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Full replacement of every field including the image. `image` MUST be valid standard base64: invalid base64 panics inside the DB layer (`.unwrap()`), dropping the connection without an HTTP response. Returns the updated row.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": 1,\n  \"name\": \"MARIA SANTOS\",\n  \"number\": \"09181234567\",\n  \"image\": \"iVBORw0KGgo=\",\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /admin/v1/recharge/get-gateway-info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/get-gateway-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "get-gateway-info"
+              ],
+              "query": []
+            },
+            "description": "All GatewayInfo rows regardless of status, as a bare array. Rows with a NULL image are skipped by the row parser.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /admin/v1/recharge/add-gateway-info",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/add-gateway-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "add-gateway-info"
+              ],
+              "query": []
+            },
+            "description": "Inserts a GatewayInfo row (ID generated by the database). `number` MUST parse as i64 (digits only, no leading +) and `image` MUST be valid standard base64; either failure panics (`.unwrap()`), dropping the connection without an HTTP response. The new ID is not returned.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": 1,\n  \"name\": \"JUAN DELA CRUZ\",\n  \"number\": \"09171234567\",\n  \"image\": \"iVBORw0KGgo=\",\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /admin/v1/recharge/get-recharge-info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/get-recharge-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "get-recharge-info"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "1-based page; clamped to the last page. page=0 underflows (debug panic / release empty data)."
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "Page size; not clamped."
+                },
+                {
+                  "key": "status",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "RechargeStatus filter."
+                },
+                {
+                  "key": "category",
+                  "value": "1",
+                  "disabled": true,
+                  "description": "RechargeType filter."
+                }
+              ]
+            },
+            "description": "Filters in SQL by `status` (RechargeStatus; cast i16→u8, so negative values wrap) and `category` (RechargeType), then paginates in memory. A page beyond the last page is clamped to the last page. limit is not clamped. Response has no page/limit echo.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /admin/v1/recharge/add-recharge-info — paypal_package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/add-recharge-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "add-recharge-info"
+              ],
+              "query": []
+            },
+            "description": "Inserts a RechargeInfo row with inline SQL in the handler (RechargeID defaults to NEWSEQUENTIALID()). `discount` is written only when present and non-null. The new ID is not returned.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": 2,\n  \"amount\": 10.0,\n  \"points\": 1000.0,\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /admin/v1/recharge/add-recharge-info — gcash_package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{admin_jwt}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/v1/recharge/add-recharge-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "v1",
+                "recharge",
+                "add-recharge-info"
+              ],
+              "query": []
+            },
+            "description": "Inserts a RechargeInfo row with inline SQL in the handler (RechargeID defaults to NEWSEQUENTIALID()). `discount` is written only when present and non-null. The new ID is not returned.\n\nExamples are fixtures. Mutating requests create real records if sent to a live server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": 1,\n  \"amount\": 500.0,\n  \"discount\": 10.0,\n  \"points\": 550.0,\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

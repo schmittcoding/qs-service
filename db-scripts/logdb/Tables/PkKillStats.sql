@@ -1,0 +1,13 @@
+USE [RanLogS1]
+GO
+
+CREATE TABLE dbo.PlayerKillStats (
+    PlayerKillID UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID(),
+    ChaNum INT NOT NULL,
+    PkKills INT NOT NULL DEFAULT 0,
+    PkDeaths INT NOT NULL DEFAULT 0,
+    ActionDate DATETIME NOT NULL,
+    CONSTRAINT PK_PlayerKillStats PRIMARY KEY (PlayerKillID),
+    CONSTRAINT UQ_PlayerKillStats_ChaNum UNIQUE (ChaNum)
+);
+GO

@@ -1,0 +1,18 @@
+USE RanUser
+GO
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[sp_GetOnlinePlayerCount]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT(*) AS OnlineCount
+    FROM RanUser.dbo.GSUserInfo WITH (NOLOCK)
+    WHERE UserLoginState = 1;
+END
+GO

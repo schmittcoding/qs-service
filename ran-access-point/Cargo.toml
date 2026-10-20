@@ -1,0 +1,66 @@
+[package]
+name = "ran-access-point"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+ran-db-core.workspace = true
+ran-models.workspace = true
+tokio.workspace = true
+tiberius.workspace = true
+deadpool-tiberius.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dotenvy.workspace = true
+futures-util.workspace = true
+actix-web = { workspace = true, features = ["rustls"] }
+actix-cors.workspace = true
+actix-tls.workspace = true
+actix-session = { workspace = true, features = ["cookie-session"] }
+jsonwebtoken.workspace = true
+uuid.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+async-trait.workspace = true
+rustls = { workspace = true, features = ["dangerous_configuration"] }
+tracing = { version = "0.1", features = ["async-await", "log"] }
+log = { version = "0.4.25", features = ["std"] }
+tracing-subscriber = { version = "0.3.19", features = ["json", "serde_json", "tracing", "env-filter"] }
+tracing-serde = "0.2.0"
+tracing-actix-web = "0.7.15"
+paypal-rs.workspace = true
+env_logger = "0.11.6"
+anyhow.workspace = true
+regex = { version = "1.11.1", features = ["logging"] }
+lettre = { version = "0.11.14",default-features = false, features = [
+        "builder",
+        "rustls",
+        "rustls-native-certs",
+        "ring",
+        "tokio1-rustls",
+        "tokio1",
+        "smtp-transport"
+    ]  }
+rand = "0.9.0"
+base64.workspace = true
+validator = { version = "0.20.0", features = ["derive"] }
+rustls-pki-types.workspace = true
+rustls-pemfile.workspace = true
+reqwest = { version = "0.12.12", features = ["multipart"] }
+once_cell = "1.19.0"
+async-smtp = "0.10.0"
+url = "2.5.4"
+hmac = "0.12"
+hex = "0.4"
+serde_qs = "0.15"
+actix-multipart.workspace = true
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
+aws-sdk-sesv2.workspace = true
+governor.workspace = true
+sha2.workspace = true
+actix-governor.workspace = true
+actix-ws = "0.3"
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true

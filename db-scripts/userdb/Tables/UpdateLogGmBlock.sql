@@ -1,0 +1,4 @@
+USE RanUser
+GO
+
+ALTER TABLE [dbo].[LogGmBlock] ADD AdminID UNIQUEIDENTIFIER

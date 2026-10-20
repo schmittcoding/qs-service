@@ -1,0 +1,395 @@
+{
+  "paths": {
+    "/api/v1/payments/get-recharge-info": {
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "paymentsListRechargeInfo",
+        "summary": "List active recharge packages",
+        "description": "Returns every RechargeInfo row with RechargeStatus = 1 as a bare JSON array. No session is read; the cookie session middleware still wraps the scope but never rejects. No pagination, no ordering clause (SQL Server row order), no caching (the generic cache is a TODO). The `type` of each package decides which payment method POST /transaction/{id} will use.",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L49", "ran-db-core/src/webmanager/transaction/mod.rs#L374"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Active recharge packages (status 1 only).",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/RechargeInfo"}}}}
+          },
+          "500": {"$ref": "#/components/responses/PaymentsFetchFailed"}
+        }
+      }
+    },
+    "/api/v1/payments/get-recharge-info/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentsRechargeId"}],
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "paymentsGetRechargeInfo",
+        "summary": "Read one recharge package by ID",
+        "description": "Returns the RechargeInfo row regardless of its status (inactive packages are readable here). A nil UUID (all zeroes) returns 400. A missing row is reported as 500, not 404, because the DB layer returns an error that the handler maps to 500.",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L96", "ran-db-core/src/webmanager/transaction/mod.rs#L532"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recharge package.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RechargeInfo"}}}
+          },
+          "400": {
+            "description": "Nil UUID.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentsErrorEnvelope"}, "example": {"error": "Invalid recharge ID format"}}}
+          },
+          "404": {"$ref": "#/components/responses/PaymentsPathNotParsed"},
+          "500": {"$ref": "#/components/responses/PaymentsFetchFailed"}
+        }
+      }
+    },
+    "/api/v1/payments/transaction/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentsRechargeId"}],
+      "post": {
+        "tags": ["Payments"],
+        "operationId": "paymentsCreateTransaction",
+        "summary": "Start a recharge purchase for one package",
+        "description": "Requires a signed-in user session whose profile has is_verified = true. Loads the RechargeInfo by path ID, then dispatches on RechargeInfo.type:\n\n- 1 GCash: body REQUIRED, `{\"type\":\"gcash\",...}`. Inserts a pending WebTransaction (type 1) with reference code and optional proof image; an administrator approves it later.\n- 2 PayPal: body MUST BE ABSENT. Inserts a pending WebTransaction (type 2), creates a PayPal order (USD, intent CAPTURE, invoice_id = transaction UUID) and returns the PayPal approval URL. The PayPal webhook settles it.\n- 3 Wise: body REQUIRED, `{\"type\":\"wise\",...}`. Inserts a pending WebTransaction (type 3) with reference code; an administrator approves it later.\n- 4 PayMongo: body MUST BE ABSENT. Inserts a pending WebTransaction (type 4), creates a PayMongo checkout session (PHP centavos, card + gcash, metadata.transaction_id = transaction UUID) and returns its checkout URL as approval_url. The PayMongo webhook settles it.\n\nThe body extractor is Option<Json<TransactionPayload>>: an unparseable, wrong-content-type or oversized (>2 MiB actix default) body is silently treated as absent. Sending a body to a PayPal/PayMongo package, or the wrong tag for the package type, returns 400 'Invalid transaction data'. A Discord notification is spawned after GCash/Wise inserts. Points are credited only when the transaction status later becomes 1 (database trigger trg_AddWebPoints).",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L649", "ran-access-point/src/routes/payments/mod.rs#L139", "ran-access-point/src/routes/payments/mod.rs#L190", "ran-access-point/src/routes/payments/mod.rs#L346", "ran-access-point/src/routes/payments/mod.rs#L597", "ran-db-core/src/webmanager/transaction/mod.rs#L574"],
+        "security": [{"UserSessionCookie": []}],
+        "requestBody": {
+          "required": false,
+          "description": "Required for GCash (type 1) and Wise (type 3) packages; must be omitted for PayPal (type 2) and PayMongo (type 4).",
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/TransactionPayload"},
+              "examples": {
+                "gcash_with_proof": {"summary": "GCash package (type 1) with base64 proof image", "value": {"type": "gcash", "reference_number": "1023456789012", "proof_image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}},
+                "gcash_without_proof": {"summary": "GCash package (type 1) without proof image", "value": {"type": "gcash", "reference_number": "1023456789012", "proof_image": null}},
+                "wise": {"summary": "Wise package (type 3)", "value": {"type": "wise", "reference_number": "P123456789"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Shape depends on the package type: TransactionAccepted for GCash/Wise, PayPalApproval for PayPal, PayMongoCheckoutCreated for PayMongo.",
+            "content": {"application/json": {"schema": {"oneOf": [
+              {"$ref": "#/components/schemas/TransactionAccepted"},
+              {"$ref": "#/components/schemas/PayPalApproval"},
+              {"$ref": "#/components/schemas/PayMongoCheckoutCreated"}
+            ]}}}
+          },
+          "400": {
+            "description": "Body validation failed (`error` key: 'Reference number cannot be empty', 'Proof image is too large', 'Invalid image format'), body missing for GCash/Wise (`message`: 'Missing transaction data'), or body/type mismatch (`message`: 'Invalid transaction data'). All variants include recharge_info.",
+            "content": {"application/json": {"schema": {"oneOf": [
+              {"$ref": "#/components/schemas/PaymentsErrorEnvelope"},
+              {"$ref": "#/components/schemas/PaymentsMessageError"}
+            ]}, "examples": {
+              "validation": {"value": {"error": "Reference number cannot be empty", "recharge_info": {"id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": 1, "amount": 500.0, "discount": null, "points": 500.0, "status": 1}}},
+              "missing_body": {"value": {"message": "Missing transaction data", "recharge_info": {"id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": 1, "amount": 500.0, "discount": null, "points": 500.0, "status": 1}}}
+            }}}
+          },
+          "403": {
+            "description": "Session user has not verified their email.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentsMessageError"}, "example": {"message": "Email verification required to use this feature", "error_code": "EMAIL_NOT_VERIFIED"}}}
+          },
+          "404": {
+            "description": "Recharge package not found, nil UUID, or any DB error while loading it (all collapse to the same response). A non-UUID path segment returns actix's plain-text 404 instead.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/PaymentsMessageError"}, "example": {"message": "Recharge ID not found"}},
+              "text/plain": {"schema": {"type": "string"}}
+            }
+          },
+          "422": {
+            "description": "PayPal/PayMongo only: inserting the pending WebTransaction failed.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentsMessageError"}, "example": {"message": "Transaction processed without data", "recharge_info": {"id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427", "type": 2, "amount": 10.0, "discount": null, "points": 1000.0, "status": 1}}}}
+          },
+          "500": {
+            "description": "No session (`message`: 'No session found' — not 401), GCash/Wise insert failure (`message`: 'Error processing request' + recharge_info; this includes a proof_image that is not plain base64), PayPal order build/create failure (`error` + `details`), PayPal approval link missing (`error`), or PayMongo API failure (`message` + recharge_info).",
+            "content": {"application/json": {"schema": {"oneOf": [
+              {"$ref": "#/components/schemas/PaymentsMessageError"},
+              {"$ref": "#/components/schemas/PaymentsErrorEnvelope"}
+            ]}, "examples": {
+              "no_session": {"value": {"message": "No session found"}},
+              "paypal_failed": {"value": {"error": "Order creation failed", "details": "ApiError(...)"}}
+            }}}
+          }
+        }
+      }
+    },
+    "/api/v1/payments/get-gateway-info": {
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "paymentsListGatewayInfo",
+        "summary": "List active manual-payment gateways",
+        "description": "Returns GatewayInfo rows with GatewayStatus = 1 (filtered in Rust after SELECT *). Gateways are the account details (name, number, QR/logo image) a player pays into for manual methods such as GCash. Rows whose GatewayImage is NULL are silently skipped by the row parser.",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L1238", "ran-db-core/src/webmanager/transaction/mod.rs#L309"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Active gateways.",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/GatewayInfo"}}}}
+          },
+          "500": {
+            "description": "Database failure.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentsErrorEnvelope"}, "example": {"error": "Failed to fetch gateway info"}}}
+          }
+        }
+      }
+    },
+    "/api/v1/payments/get-recharge-logs": {
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "paymentsListRechargeLogs",
+        "summary": "List the signed-in user's own transactions",
+        "description": "Requires a user session. Loads every WebTransaction of session.user_num ordered by TransactionTime DESC, filters in memory by `status` and `category` (= transaction type), then paginates in memory. `search`, `start_date`, `end_date` are accepted but ignored. Results are cached per (user_num, page, limit) for 30 seconds; the cache stores the unfiltered list, so filter changes apply immediately but newly created transactions can take up to 30 s to appear.",
+        "x-source": ["ran-access-point/src/routes/payments/mod.rs#L1257", "ran-db-core/src/webmanager/transaction/mod.rs#L130"],
+        "security": [{"UserSessionCookie": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/PaymentsPage"},
+          {"$ref": "#/components/parameters/PaymentsLimit"},
+          {"name": "status", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/TransactionStatus"}, "description": "Keep only this transaction status."},
+          {"name": "category", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/TransactionType"}, "description": "Keep only this transaction type (payment method)."}
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the user's transactions.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TransactionPage"}}}
+          },
+          "400": {"$ref": "#/components/responses/PaymentsBadQuery"},
+          "500": {
+            "description": "No session (`message`) or database failure (`error`).",
+            "content": {"application/json": {"schema": {"oneOf": [
+              {"$ref": "#/components/schemas/PaymentsMessageError"},
+              {"$ref": "#/components/schemas/PaymentsErrorEnvelope"}
+            ]}, "examples": {
+              "no_session": {"value": {"message": "No session found"}},
+              "db": {"value": {"error": "Failed to fetch recharge logs"}}
+            }}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "UserSessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "YXGames",
+        "description": "actix-session CookieSessionStore cookie. Name comes from env COOKIE_NAME (YXGames in the reviewed .env). Private (encrypted) content, HttpOnly, SameSite=Lax, Secure unless WEB_DOMAIN ends with .local, Domain = WEB_DOMAIN. Set by the user login endpoint (/api/v1/auth, outside this contract); the session key `user_data` holds a ProfileData. Browsers must send credentials (fetch credentials: 'include'). A missing/expired session makes the handler return 500 {\"message\":\"No session found\"}."
+      }
+    },
+    "parameters": {
+      "PaymentsRechargeId": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}, "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "description": "RechargeInfo.id (RechargeID). A value that is not a UUID fails path extraction with actix's plain-text 404."},
+      "PaymentsPage": {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1, "x-rust-type": "Option<usize>"}, "description": "1-based page. page=0 underflows `page - 1`: panic in debug builds (overflow-checks), empty `data` in release builds."},
+      "PaymentsLimit": {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10, "x-rust-type": "Option<usize>"}, "description": "Page size; values above 100 are clamped to 100."}
+    },
+    "responses": {
+      "PaymentsFetchFailed": {
+        "description": "Database failure (or, for the by-ID route, row not found).",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaymentsErrorEnvelope"}, "example": {"error": "Failed to fetch recharge info"}}}
+      },
+      "PaymentsPathNotParsed": {
+        "description": "Path segment is not a UUID; actix path extractor returns plain text.",
+        "content": {"text/plain": {"schema": {"type": "string"}}}
+      },
+      "PaymentsBadQuery": {
+        "description": "A query value has the wrong type (e.g. page=abc); actix query extractor returns plain text.",
+        "content": {"text/plain": {"schema": {"type": "string", "examples": ["Query deserialize error: invalid digit found in string"]}}}
+      }
+    },
+    "schemas": {
+      "TransactionType": {
+        "type": "integer",
+        "enum": [1, 2, 3, 4],
+        "x-rust-type": "i16",
+        "x-enum-names": ["GCash", "PayPal", "Wise", "PayMongo"],
+        "description": "Payment method. 1 = GCash (manual, proof + reference, admin approval), 2 = PayPal (redirect, webhook settlement, USD), 3 = Wise (manual, reference, admin approval), 4 = PayMongo (redirect, webhook settlement, PHP). Used by RechargeInfo.type, AddRechargeInfo.type and WebTransactionResponse.transaction_type. Stored as SMALLINT; there is no Rust enum, only these literal values in the dispatch match."
+      },
+      "TransactionStatus": {
+        "type": "integer",
+        "enum": [0, 1, 2],
+        "x-rust-type": "i16",
+        "x-enum-names": ["Pending", "Approved", "Declined"],
+        "description": "0 = Pending (DB default on insert), 1 = Approved (trigger trg_AddWebPoints adds TransactionAmount to WebUser.WebPoints on the 0→1 change), 2 = Declined/Cancelled. Only Pending rows can change status."
+      },
+      "RecordStatus": {
+        "type": "integer",
+        "minimum": -32768,
+        "maximum": 32767,
+        "x-rust-type": "i16",
+        "description": "Visibility flag for RechargeInfo and GatewayInfo rows. 1 = active (returned by the player endpoints). Any other value hides the row from players; the code assigns no other meaning."
+      },
+      "RechargeInfo": {
+        "type": "object",
+        "x-rust-type": "ran_models::payments::RechargeInfo",
+        "x-source": "ran-models/src/payments/mod.rs#L161",
+        "description": "A purchasable R-Coin package (table RechargeInfo).",
+        "required": ["id", "type", "amount", "discount", "points", "status"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid", "x-rust-type": "Uuid", "description": "RechargeID."},
+          "type": {"$ref": "#/components/schemas/TransactionType"},
+          "amount": {"type": "number", "format": "double", "x-rust-type": "f64", "description": "RechargeAmount: real-money price. Currency is implied by type: PayPal charges USD, PayMongo charges PHP (amount × 100 centavos); GCash/Wise are paid manually."},
+          "discount": {"type": ["number", "null"], "format": "double", "x-rust-type": "Option<f64>", "description": "RechargeDiscount (MONEY; the table script declares NOT NULL DEFAULT 0, so 0.0 is the usual 'no discount' value). Display-only; never applied to the charged amount. Always present; null only if the live column allows NULL."},
+          "points": {"type": "number", "format": "double", "x-rust-type": "f64", "description": "RechargePoints: R-Coin (web points) credited on approval."},
+          "status": {"$ref": "#/components/schemas/RecordStatus"}
+        },
+        "additionalProperties": false,
+        "examples": [{"id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": 1, "amount": 500.0, "discount": null, "points": 500.0, "status": 1}]
+      },
+      "GatewayInfo": {
+        "type": "object",
+        "x-rust-type": "ran_models::payments::GatewayInfo",
+        "x-source": "ran-models/src/payments/mod.rs#L209",
+        "description": "Account details a player pays into for a manual method (table GatewayInfo).",
+        "required": ["id", "provider", "name", "number", "image", "status"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid", "x-rust-type": "Uuid", "description": "GatewayID."},
+          "provider": {"type": "integer", "minimum": -32768, "maximum": 32767, "x-rust-type": "i16", "description": "GatewayProvider. No mapping exists in code or SQL; treat as an opaque code (frontends conventionally reuse TransactionType values)."},
+          "name": {"type": "string", "x-rust-type": "String", "description": "GatewayName: account holder name."},
+          "number": {"type": "string", "x-rust-type": "String", "description": "GatewayNumber: account/mobile number, digits only."},
+          "image": {"type": "string", "contentEncoding": "base64", "x-rust-type": "String", "description": "GatewayImage bytes as standard base64 (no data: prefix), e.g. a QR code."},
+          "status": {"$ref": "#/components/schemas/RecordStatus"}
+        },
+        "additionalProperties": false,
+        "examples": [{"id": "0d4f7b9a-2c1e-4f6b-9a3d-5e8c7b6a1f20", "provider": 1, "name": "JUAN DELA CRUZ", "number": "09171234567", "image": "iVBORw0KGgo=", "status": 1}]
+      },
+      "WebTransactionResponse": {
+        "type": "object",
+        "x-rust-type": "ran_models::payments::WebTransactionResponse",
+        "x-source": "ran-models/src/payments/mod.rs#L83",
+        "description": "One purchase attempt (table WebTransaction), with the proof image re-encoded to base64.",
+        "required": ["transaction_id", "user_num", "user_name", "transaction_type", "transaction_time", "transaction_price", "transaction_status", "transaction_amount", "updated_at", "transaction_cost", "proof_image", "reference_code", "admin_remarks"],
+        "properties": {
+          "transaction_id": {"type": "string", "format": "uuid", "x-rust-type": "Uuid", "description": "TransactionID. Also the PayPal invoice_id and PayMongo metadata.transaction_id / reference_number."},
+          "user_num": {"type": "integer", "format": "int64", "x-rust-type": "i64", "description": "UserNum of the buyer."},
+          "user_name": {"type": "string", "x-rust-type": "String", "description": "UserName snapshot at purchase time."},
+          "transaction_type": {"$ref": "#/components/schemas/TransactionType"},
+          "transaction_time": {"type": "string", "format": "date-time", "x-rust-type": "DateTime<Local>", "description": "TransactionTime (DB DATETIME, interpreted in the API server's local timezone) serialized RFC 3339 with offset."},
+          "transaction_price": {"type": "number", "format": "double", "x-rust-type": "f64", "description": "TransactionPrice = RechargeInfo.amount (money)."},
+          "transaction_status": {"$ref": "#/components/schemas/TransactionStatus"},
+          "transaction_amount": {"type": "number", "format": "double", "x-rust-type": "f64", "description": "TransactionAmount = RechargeInfo.points (R-Coin to credit). Despite the name this is NOT money."},
+          "updated_at": {"type": ["string", "null"], "format": "date-time", "x-rust-type": "Option<DateTime<Local>>", "description": "UpdatedAt; null until changed."},
+          "transaction_cost": {"type": "number", "format": "double", "x-rust-type": "f64", "description": "TransactionCost = RechargeInfo.amount (same as transaction_price)."},
+          "proof_image": {"type": ["string", "null"], "contentEncoding": "base64", "x-rust-type": "Option<String>", "description": "ProofImage bytes as standard base64, no data: prefix. GCash only."},
+          "reference_code": {"type": ["string", "null"], "x-rust-type": "Option<String>", "description": "RefferenceCode column (sic): GCash/Wise reference number."},
+          "admin_remarks": {"type": ["string", "null"], "x-rust-type": "Option<String>", "description": "AdminRemarks. No endpoint in this contract writes it."}
+        },
+        "additionalProperties": false,
+        "examples": [{"transaction_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5", "user_num": 10234, "user_name": "player01", "transaction_type": 1, "transaction_time": "2026-10-16T14:03:22+08:00", "transaction_price": 500.0, "transaction_status": 0, "transaction_amount": 500.0, "updated_at": null, "transaction_cost": 500.0, "proof_image": null, "reference_code": "1023456789012", "admin_remarks": null}]
+      },
+      "TransactionPage": {
+        "type": "object",
+        "description": "Paginated transaction list with computed total_pages (json! macro, no Rust struct).",
+        "required": ["page", "limit", "total_pages", "total_items", "data"],
+        "properties": {
+          "page": {"type": "integer", "minimum": 0, "x-rust-type": "usize", "description": "Requested page, echoed back (not clamped)."},
+          "limit": {"type": "integer", "minimum": 0, "x-rust-type": "usize", "description": "Effective page size after clamping to 100."},
+          "total_pages": {"type": "integer", "minimum": 1, "x-rust-type": "usize", "description": "ceil(total_items / limit); 1 when there are no items."},
+          "total_items": {"type": "integer", "minimum": 0, "x-rust-type": "usize", "description": "Count after filtering, before pagination."},
+          "data": {"type": "array", "items": {"$ref": "#/components/schemas/WebTransactionResponse"}}
+        },
+        "additionalProperties": false
+      },
+      "GCashTransaction": {
+        "type": "object",
+        "x-rust-type": "ran_models::payments::gcash::GCashTransaction",
+        "x-source": "ran-models/src/payments/gcash/mod.rs#L4",
+        "required": ["reference_number"],
+        "properties": {
+          "reference_number": {"type": "string", "minLength": 1, "maxLength": 50, "x-rust-type": "String", "description": "GCash reference number. Must be non-blank after trim. Stored in RefferenceCode NVARCHAR(50): longer values fail the insert (500). Not checked for uniqueness (the duplicate check is commented out)."},
+          "proof_image": {"type": ["string", "null"], "maxLength": 5000000, "contentEncoding": "base64", "x-rust-type": "Option<String>", "description": "Receipt screenshot as plain standard base64 WITHOUT a data: prefix. Validation lets a data:image... string through, but the DB layer then fails to decode it and the request returns 500. Max 5,000,000 characters by validation; the actix JSON limit (2 MiB) applies first."}
+        },
+        "additionalProperties": true
+      },
+      "WiseTransaction": {
+        "type": "object",
+        "x-rust-type": "ran_models::payments::wise::WiseTransaction",
+        "x-source": "ran-models/src/payments/wise/mod.rs#L4",
+        "required": ["reference_number"],
+        "properties": {
+          "reference_number": {"type": "string", "minLength": 1, "maxLength": 50, "x-rust-type": "String", "description": "Wise transfer reference. Must be non-blank after trim. Stored in RefferenceCode NVARCHAR(50)."}
+        },
+        "additionalProperties": true
+      },
+      "GCashTransactionPayload": {
+        "title": "gcash",
+        "allOf": [
+          {"$ref": "#/components/schemas/GCashTransaction"},
+          {"type": "object", "required": ["type"], "properties": {"type": {"const": "gcash"}}}
+        ],
+        "examples": [{"type": "gcash", "reference_number": "1023456789012", "proof_image": null}]
+      },
+      "WiseTransactionPayload": {
+        "title": "wise",
+        "allOf": [
+          {"$ref": "#/components/schemas/WiseTransaction"},
+          {"type": "object", "required": ["type"], "properties": {"type": {"const": "wise"}}}
+        ],
+        "examples": [{"type": "wise", "reference_number": "P123456789"}]
+      },
+      "TransactionPayload": {
+        "x-rust-type": "TransactionPayload (private enum in ran-access-point/src/routes/payments/mod.rs)",
+        "x-source": "ran-access-point/src/routes/payments/mod.rs#L38",
+        "description": "Serde internally tagged enum: #[serde(tag = \"type\", rename_all = \"lowercase\")]. The variant fields sit next to `type` at the top level.",
+        "oneOf": [
+          {"$ref": "#/components/schemas/GCashTransactionPayload"},
+          {"$ref": "#/components/schemas/WiseTransactionPayload"}
+        ],
+        "discriminator": {"propertyName": "type", "mapping": {"gcash": "#/components/schemas/GCashTransactionPayload", "wise": "#/components/schemas/WiseTransactionPayload"}}
+      },
+      "TransactionAccepted": {
+        "type": "object",
+        "description": "GCash/Wise success (json! macro). The created transaction ID is NOT returned.",
+        "required": ["message", "data", "recharge_info"],
+        "properties": {
+          "message": {"const": "Transaction processed"},
+          "data": {"description": "The submitted GCashTransaction or WiseTransaction echoed back (without the `type` tag). GCash echoes proof_image (null when omitted).", "anyOf":[{"$ref": "#/components/schemas/GCashTransaction"}, {"$ref": "#/components/schemas/WiseTransaction"}]},
+          "recharge_info": {"$ref": "#/components/schemas/RechargeInfo"}
+        },
+        "additionalProperties": false,
+        "examples": [{"message": "Transaction processed", "data": {"reference_number": "P123456789"}, "recharge_info": {"id": "5a1d6c2e-8b3f-4e7a-9c1d-2f3e4a5b6c7d", "type": 3, "amount": 25.0, "discount": null, "points": 2500.0, "status": 1}}]
+      },
+      "PayPalApproval": {
+        "type": "object",
+        "description": "PayPal success (json! macro). Redirect the browser to approval_url. PayPal returns the buyer to env PAYPAL_RETURN_URL / PAYPAL_CANCEL_URL.",
+        "required": ["approval_url"],
+        "properties": {"approval_url": {"type": "string", "format": "uri", "description": "PayPal order link with rel = approve."}},
+        "additionalProperties": false,
+        "examples": [{"approval_url": "https://www.sandbox.paypal.com/checkoutnow?token=5O190127TN364715T"}]
+      },
+      "PayMongoCheckoutCreated": {
+        "type": "object",
+        "description": "PayMongo success (json! macro). Redirect the browser to approval_url. PayMongo returns the buyer to env PAYMONGO_SUCCESS_URL / PAYMONGO_CANCEL_URL.",
+        "required": ["message", "checkout_session_id", "status", "approval_url", "recharge_info"],
+        "properties": {
+          "message": {"const": "PayMongo Checkout Session created"},
+          "checkout_session_id": {"type": "string", "description": "PayMongo checkout session id (cs_...)."},
+          "status": {"type": "string", "description": "PayMongo checkout session status, normally 'active'."},
+          "approval_url": {"type": "string", "format": "uri", "description": "PayMongo checkout_url."},
+          "recharge_info": {"$ref": "#/components/schemas/RechargeInfo"}
+        },
+        "additionalProperties": false,
+        "examples": [{"message": "PayMongo Checkout Session created", "checkout_session_id": "cs_example123", "status": "active", "approval_url": "https://checkout.paymongo.com/cs_example123", "recharge_info": {"id": "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f", "type": 4, "amount": 499.0, "discount": null, "points": 500.0, "status": 1}}]
+      },
+      "PaymentsMessageError": {
+        "type": "object",
+        "description": "Error envelope keyed by `message` (json! macro).",
+        "required": ["message"],
+        "properties": {
+          "message": {"type": "string"},
+          "error_code": {"type": "string", "enum": ["EMAIL_NOT_VERIFIED"], "description": "Only on 403."},
+          "recharge_info": {"$ref": "#/components/schemas/RechargeInfo"}
+        },
+        "additionalProperties": false,
+        "examples": [{"message": "No session found"}, {"message": "Email verification required to use this feature", "error_code": "EMAIL_NOT_VERIFIED"}]
+      },
+      "PaymentsErrorEnvelope": {
+        "type": "object",
+        "description": "Error envelope keyed by `error` (json! macro).",
+        "required": ["error"],
+        "properties": {
+          "error": {"type": "string"},
+          "details": {"type": "string", "description": "PayPal failures only: Debug/Display text of the underlying error."},
+          "recharge_info": {"$ref": "#/components/schemas/RechargeInfo"}
+        },
+        "additionalProperties": false,
+        "examples": [{"error": "Failed to fetch recharge info"}, {"error": "Invalid order configuration", "details": "..."}]
+      }
+    }
+  }
+}

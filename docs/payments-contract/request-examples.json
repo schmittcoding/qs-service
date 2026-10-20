@@ -1,0 +1,205 @@
+[
+  {
+    "path": "/api/v1/payments/transaction/{id}",
+    "method": "post",
+    "name": "gcash_with_proof",
+    "media_type": "application/json",
+    "value": {
+      "type": "gcash",
+      "reference_number": "1023456789012",
+      "proof_image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    }
+  },
+  {
+    "path": "/api/v1/payments/transaction/{id}",
+    "method": "post",
+    "name": "gcash_without_proof",
+    "media_type": "application/json",
+    "value": {
+      "type": "gcash",
+      "reference_number": "1023456789012",
+      "proof_image": null
+    }
+  },
+  {
+    "path": "/api/v1/payments/transaction/{id}",
+    "method": "post",
+    "name": "wise",
+    "media_type": "application/json",
+    "value": {
+      "type": "wise",
+      "reference_number": "P123456789"
+    }
+  },
+  {
+    "path": "/api/v1/payments/webhook/paypal",
+    "method": "post",
+    "name": "capture_completed",
+    "media_type": "application/json",
+    "value": {
+      "id": "WH-58D329510W468432D-8HN650336L201105X",
+      "event_type": "PAYMENT.CAPTURE.COMPLETED",
+      "resource": {
+        "id": "2GG279541U471931P",
+        "invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5",
+        "status": "COMPLETED"
+      }
+    }
+  },
+  {
+    "path": "/api/v1/payments/webhook/paypal",
+    "method": "post",
+    "name": "order_approved",
+    "media_type": "application/json",
+    "value": {
+      "id": "WH-COC11055RA711503B-4YM959094A144403T",
+      "event_type": "CHECKOUT.ORDER.APPROVED",
+      "resource": {
+        "id": "5O190127TN364715T",
+        "status": "APPROVED",
+        "purchase_units": [
+          {
+            "invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "path": "/api/v1/payments/webhook/paypal",
+    "method": "post",
+    "name": "capture_denied",
+    "media_type": "application/json",
+    "value": {
+      "id": "WH-1JE36889N6046023R-3T9271440V557134J",
+      "event_type": "PAYMENT.CAPTURE.DENIED",
+      "resource": {
+        "id": "7NW873794T343360M",
+        "invoice_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5",
+        "status": "DECLINED"
+      }
+    }
+  },
+  {
+    "path": "/api/v1/payments/webhook/paymongo",
+    "method": "post",
+    "name": "payment_paid",
+    "media_type": "application/json",
+    "value": {
+      "data": {
+        "id": "evt_example123",
+        "type": "event",
+        "attributes": {
+          "type": "payment.paid",
+          "livemode": false,
+          "data": {
+            "id": "pay_example456",
+            "type": "payment",
+            "attributes": {
+              "amount": 49900,
+              "currency": "PHP",
+              "status": "paid",
+              "metadata": {
+                "transaction_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"
+              }
+            }
+          },
+          "created_at": 1792130000,
+          "updated_at": 1792130000
+        }
+      }
+    }
+  },
+  {
+    "path": "/api/v1/payments/webhook/paymongo",
+    "method": "post",
+    "name": "payment_failed",
+    "media_type": "application/json",
+    "value": {
+      "data": {
+        "id": "evt_example789",
+        "type": "event",
+        "attributes": {
+          "type": "payment.failed",
+          "livemode": false,
+          "data": {
+            "id": "pay_example012",
+            "type": "payment",
+            "attributes": {
+              "status": "failed",
+              "metadata": {
+                "transaction_id": "9f1c2d3e-4b5a-4c6d-8e7f-a0b1c2d3e4f5"
+              }
+            }
+          },
+          "created_at": 1792130000,
+          "updated_at": 1792130000
+        }
+      }
+    }
+  },
+  {
+    "path": "/admin/v1/recharge/update-recharge-info/{id}",
+    "method": "put",
+    "name": "update",
+    "media_type": "application/json",
+    "value": {
+      "type": 2,
+      "amount": 12.0,
+      "discount": null,
+      "points": 1200.0,
+      "status": 1
+    }
+  },
+  {
+    "path": "/admin/v1/recharge/update-gateway-info/{id}",
+    "method": "put",
+    "name": "update",
+    "media_type": "application/json",
+    "value": {
+      "provider": 1,
+      "name": "MARIA SANTOS",
+      "number": "09181234567",
+      "image": "iVBORw0KGgo=",
+      "status": 1
+    }
+  },
+  {
+    "path": "/admin/v1/recharge/add-gateway-info",
+    "method": "post",
+    "name": "create",
+    "media_type": "application/json",
+    "value": {
+      "provider": 1,
+      "name": "JUAN DELA CRUZ",
+      "number": "09171234567",
+      "image": "iVBORw0KGgo=",
+      "status": 1
+    }
+  },
+  {
+    "path": "/admin/v1/recharge/add-recharge-info",
+    "method": "post",
+    "name": "paypal_package",
+    "media_type": "application/json",
+    "value": {
+      "type": 2,
+      "amount": 10.0,
+      "points": 1000.0,
+      "status": 1
+    }
+  },
+  {
+    "path": "/admin/v1/recharge/add-recharge-info",
+    "method": "post",
+    "name": "gcash_package",
+    "media_type": "application/json",
+    "value": {
+      "type": 1,
+      "amount": 500.0,
+      "discount": 10.0,
+      "points": 550.0,
+      "status": 1
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "openapi_valid": true,
+  "paths": 16,
+  "operations": 16,
+  "schemas": 34,
+  "request_examples_validated": 13,
+  "schema_examples_validated": 19,
+  "response_examples_validated": 36,
+  "route_coverage": "all_implemented_routes_matched"
+}
