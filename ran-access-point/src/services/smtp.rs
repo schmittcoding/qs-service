@@ -1,7 +1,4 @@
 use anyhow::{Context, Result};
-use aws_config::Region;
-use aws_sdk_sesv2::config::Credentials as AwsCredentials;
-use aws_sdk_sesv2::types::{Body, Content, Destination, EmailContent, Message as SesMessage};
 use lettre::message::{header, Message};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::Tls;
@@ -9,30 +6,6 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
-
-#[derive(Clone)]
-struct SesConfigurationSet(String);
-
-impl header::Header for SesConfigurationSet {
-    fn name() -> header::HeaderName {
-        header::HeaderName::new_from_ascii_str("X-SES-CONFIGURATION-SET")
-    }
-
-    fn parse(_s: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(SesConfigurationSet(_s.to_string()))
-    }
-
-    fn display(&self) -> header::HeaderValue {
-        header::HeaderValue::new(Self::name(), self.0.clone())
-    }
-}
-
-fn ses_configuration_set_header() -> Option<SesConfigurationSet> {
-    env::var("SES_CONFIGURATION_SET")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(SesConfigurationSet)
-}
 
 #[derive(Debug, Deserialize)]
 pub struct SmtpConfig {
@@ -95,104 +68,34 @@ pub fn default_preview_variables() -> HashMap<String, String> {
     vars
 }
 
-pub struct SesConfig {
-    pub region: String,
-    pub access_key: String,
-    pub secret_key: String,
-    pub from_email: String,
-}
-
-impl SesConfig {
-    pub fn from_env() -> Result<Self> {
-        dotenvy::dotenv().ok();
-        Ok(SesConfig {
-            region: env::var("SES_REGION").context("SES_REGION must be set")?,
-            access_key: env::var("SES_ACCESS_KEY").context("SES_ACCESS_KEY must be set")?,
-            secret_key: env::var("SES_SECRET_KEY").context("SES_SECRET_KEY must be set")?,
-            from_email: env::var("SES_FROM_EMAIL").context("SES_FROM_EMAIL must be set")?,
-        })
-    }
-}
-
-pub async fn build_ses_client(config: &SesConfig) -> aws_sdk_sesv2::Client {
-    let region = Region::new(config.region.clone());
-    let ses_config = aws_sdk_sesv2::config::Builder::new()
-        .region(region)
-        .credentials_provider(AwsCredentials::new(
-            &config.access_key,
-            &config.secret_key,
-            None,
-            None,
-            "ses",
-        ))
+pub fn build_smtp_transport(config: &SmtpConfig) -> Result<AsyncSmtpTransport<Tokio1Executor>> {
+    let creds = Credentials::new(config.smtp_user.clone(), config.smtp_pass.clone());
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
+        .context("Failed to create SMTP transport")?
+        .credentials(creds)
+        .tls(Tls::None)
         .build();
-    aws_sdk_sesv2::Client::from_conf(ses_config)
+    Ok(mailer)
 }
 
-pub async fn send_campaign_email_ses(
-    ses_client: &aws_sdk_sesv2::Client,
+pub async fn send_campaign_email(
+    mailer: &AsyncSmtpTransport<Tokio1Executor>,
     from_email: &str,
     recipient_email: &str,
     subject: &str,
     html_body: &str,
 ) -> Result<()> {
-    let dest = Destination::builder()
-        .to_addresses(recipient_email)
-        .build();
+    let email = Message::builder()
+        .from(from_email.parse().context("Invalid sender address")?)
+        .to(recipient_email.parse().context("Invalid recipient address")?)
+        .subject(subject)
+        .header(header::ContentType::TEXT_HTML)
+        .body(html_body.to_string())
+        .context("Failed to build campaign email")?;
 
-    let subject_content = Content::builder().data(subject).charset("UTF-8").build()?;
-    let html_content = Content::builder().data(html_body).charset("UTF-8").build()?;
-    let body = Body::builder().html(html_content).build();
-    let msg = SesMessage::builder()
-        .subject(subject_content)
-        .body(body)
-        .build();
-    let email_content = EmailContent::builder().simple(msg).build();
-
-    let mut req = ses_client
-        .send_email()
-        .from_email_address(from_email)
-        .destination(dest)
-        .content(email_content);
-
-    if let Ok(config_set) = env::var("SES_CONFIGURATION_SET") {
-        if !config_set.is_empty() {
-            req = req.configuration_set_name(config_set);
-        }
-    }
-
-    req.send().await.context("SES send_email failed")?;
+    mailer.send(email).await.context("SMTP send failed")?;
 
     Ok(())
-}
-
-pub async fn send_campaign_email(
-    recipient_email: &str,
-    subject: &str,
-    html_body: &str,
-) -> Result<()> {
-    let config = SmtpConfig::from_env()?;
-
-    let mut builder = Message::builder()
-        .from(config.smtp_email.parse()?)
-        .to(recipient_email.parse()?)
-        .subject(subject)
-        .header(header::ContentType::TEXT_HTML);
-
-    if let Some(config_set) = ses_configuration_set_header() {
-        builder = builder.header(config_set);
-    }
-
-    let email = builder.body(html_body.to_string())?;
-
-    let tls = Tls::None;
-    let creds = Credentials::new(config.smtp_user, config.smtp_pass);
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?
-        .credentials(creds)
-        .tls(tls)
-        .build();
-
-    mailer.send(email).await.map(|_| ()).map_err(|e| e.into())
 }
 
 pub async fn send_updated_pincode(
@@ -266,15 +169,13 @@ pub async fn send_updated_pincode(
         new_pincode = pincode
     );
 
-    let mut builder = Message::builder()
+    let email = Message::builder()
         .from(config.smtp_email.parse().unwrap())
         .to(recipient.parse().unwrap())
         .subject("[NO-REPLY] Your New Ran Online Pincode")
-        .header(header::ContentType::TEXT_HTML);
-    if let Some(config_set) = ses_configuration_set_header() {
-        builder = builder.header(config_set);
-    }
-    let email = builder.body(html_body).unwrap();
+        .header(header::ContentType::TEXT_HTML)
+        .body(html_body)
+        .unwrap();
     let tls = Tls::None;
     let creds = Credentials::new(config.smtp_user, config.smtp_pass);
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?
@@ -350,15 +251,13 @@ pub async fn send_updated_password(
         new_pass = password
     );
 
-    let mut builder = Message::builder()
+    let email = Message::builder()
         .from(config.smtp_email.parse().unwrap())
         .to(recipient.parse().unwrap())
         .subject("[NO-REPLY] RAN Online GS : Updated Password")
-        .header(header::ContentType::TEXT_HTML);
-    if let Some(config_set) = ses_configuration_set_header() {
-        builder = builder.header(config_set);
-    }
-    let email = builder.body(html_body).unwrap();
+        .header(header::ContentType::TEXT_HTML)
+        .body(html_body)
+        .unwrap();
     let tls = Tls::None;
     let creds = Credentials::new(config.smtp_user, config.smtp_pass);
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?
@@ -442,15 +341,13 @@ pub async fn send_verification_email(
         verification_link = verification_link
     );
 
-    let mut builder = Message::builder()
+    let email = Message::builder()
         .from(config.smtp_email.parse().unwrap())
         .to(recipient.parse().unwrap())
         .subject("[NO-REPLY] Verify Your RAN Online GS Email")
-        .header(header::ContentType::TEXT_HTML);
-    if let Some(config_set) = ses_configuration_set_header() {
-        builder = builder.header(config_set);
-    }
-    let email = builder.body(html_body).unwrap();
+        .header(header::ContentType::TEXT_HTML)
+        .body(html_body)
+        .unwrap();
     let tls = Tls::None;
     let creds = Credentials::new(config.smtp_user, config.smtp_pass);
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?

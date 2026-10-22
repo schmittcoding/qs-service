@@ -56,7 +56,6 @@ anyhow = "1.0.96"
 base64 = "0.22.1"
 aws-config = "1.8.11"
 aws-sdk-s3 = { version = "1.115.0", features = ["behavior-version-latest"] }
-aws-sdk-sesv2 = { version = "1.122.0", features = ["behavior-version-latest"] }
 governor = "0.10.4"
 sha2 = "0.10.9"
 actix-governor = "0.10.0"
