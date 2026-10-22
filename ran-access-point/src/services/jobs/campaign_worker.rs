@@ -14,9 +14,9 @@ const BATCH_SIZE: i32 = 500;
 const MAX_ATTEMPTS: i16 = 3;
 const FAILURE_THRESHOLD_COUNT: i32 = 200;
 const POLL_INTERVAL_SECS: u64 = 15;
-const SES_CONCURRENCY: usize = 10;
-const SES_RATE_PER_SEC: u32 = 14;
-const DAILY_SES_QUOTA: i32 = 45_000;
+const SMTP_CONCURRENCY: usize = 5;
+const SMTP_RATE_PER_SEC: u32 = 5;
+const DAILY_SMTP_QUOTA: i32 = 10_000;
 
 struct DailySendTracker {
     date: NaiveDate,
@@ -37,7 +37,7 @@ impl DailySendTracker {
             self.date = today;
             self.count = 0;
         }
-        DAILY_SES_QUOTA - self.count
+        DAILY_SMTP_QUOTA - self.count
     }
 
     fn add(&mut self, n: i32) {
@@ -119,15 +119,15 @@ async fn process_active_campaign(web_db: &WebDB, app_state: &AppState, daily_tra
     let mut batch_counter = 0u32;
 
     let rate_limiter = RateLimiter::direct(
-        Quota::per_second(NonZeroU32::new(SES_RATE_PER_SEC).unwrap()),
+        Quota::per_second(NonZeroU32::new(SMTP_RATE_PER_SEC).unwrap()),
     );
 
     loop {
         let remaining_quota = daily_tracker.remaining();
         if remaining_quota <= 0 {
             info!(
-                "Campaign '{}': daily SES quota ({}) reached — pausing until tomorrow",
-                campaign.campaign_name, DAILY_SES_QUOTA
+                "Campaign '{}': daily SMTP quota ({}) reached — pausing until tomorrow",
+                campaign.campaign_name, DAILY_SMTP_QUOTA
             );
 
             let pending = campaign.total_recipients - total_sent - total_failed;
@@ -222,11 +222,11 @@ async fn process_active_campaign(web_db: &WebDB, app_state: &AppState, daily_tra
             .map(|r| (r.user_num, r.user_name.clone(), r.user_email.clone()))
             .collect();
 
-        // Concurrent SES sending with rate limiting
+        // Concurrent SMTP sending with rate limiting
         let results: Vec<_> = stream::iter(send_items.into_iter().map(|(user_num, user_name, user_email)| {
             let rate_limiter = &rate_limiter;
-            let ses_client = &app_state.ses_client;
-            let from_email = &app_state.ses_from_email;
+            let mailer = &app_state.smtp_transport;
+            let from_email = &app_state.smtp_from_email;
             let html_template = &html_template;
             let subject_template = &subject_template;
 
@@ -241,8 +241,8 @@ async fn process_active_campaign(web_db: &WebDB, app_state: &AppState, daily_tra
 
                 rate_limiter.until_ready().await;
 
-                let result = smtp::send_campaign_email_ses(
-                    ses_client,
+                let result = smtp::send_campaign_email(
+                    mailer,
                     from_email,
                     &user_email,
                     &rendered_subject,
@@ -253,7 +253,7 @@ async fn process_active_campaign(web_db: &WebDB, app_state: &AppState, daily_tra
                 (user_num, user_email, result)
             }
         }))
-        .buffer_unordered(SES_CONCURRENCY)
+        .buffer_unordered(SMTP_CONCURRENCY)
         .collect()
         .await;
 
@@ -271,7 +271,7 @@ async fn process_active_campaign(web_db: &WebDB, app_state: &AppState, daily_tra
                 }
                 Err(e) => {
                     let err_msg = format!("{:?}", e);
-                    warn!("SES send failed for recipient {} (campaign {}): {}", user_num, campaign_id, &err_msg);
+                    warn!("SMTP send failed for recipient {} (campaign {}): {}", user_num, campaign_id, &err_msg);
                     if let Err(update_err) = web_db
                         .update_recipient_status(
                             campaign_id,

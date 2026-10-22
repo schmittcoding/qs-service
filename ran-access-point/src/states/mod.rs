@@ -1,5 +1,6 @@
 use actix_web::web;
 use anyhow::Context;
+use lettre::{AsyncSmtpTransport, Tokio1Executor};
 use paypal_rs::{Client, PaypalEnv};
 use ran_db_core::gamemanager::CommonRankingData;
 use ran_models::{
@@ -36,8 +37,8 @@ pub struct AppState {
     pub online_players_cache: Mutex<SimpleVecCache<String>>,
     pub level_cap_race_leaderboard_cache: Mutex<HashMap<Uuid, CachedLevelCapRaceLeaderboard>>,
     pub campaign_progress_tx: broadcast::Sender<CampaignProgressEvent>,
-    pub ses_client: aws_sdk_sesv2::Client,
-    pub ses_from_email: String,
+    pub smtp_transport: AsyncSmtpTransport<Tokio1Executor>,
+    pub smtp_from_email: String,
     pub suppression_cache: Arc<RwLock<HashSet<String>>>,
 }
 
@@ -58,9 +59,9 @@ impl AppState {
         };
         let client = Client::new(clientid, secret, env);
 
-        let ses_config = smtp::SesConfig::from_env()?;
-        let ses_from_email = ses_config.from_email.clone();
-        let ses_client = smtp::build_ses_client(&ses_config).await;
+        let smtp_config = smtp::SmtpConfig::from_env()?;
+        let smtp_from_email = smtp_config.smtp_email.clone();
+        let smtp_transport = smtp::build_smtp_transport(&smtp_config)?;
 
         let state = AppState {
             news_data: Mutex::new(HashMap::new()),
@@ -78,8 +79,8 @@ impl AppState {
             ),
             level_cap_race_leaderboard_cache: Mutex::new(HashMap::new()),
             campaign_progress_tx: broadcast::channel(32).0,
-            ses_client,
-            ses_from_email,
+            smtp_transport,
+            smtp_from_email,
             suppression_cache: Arc::new(RwLock::new(HashSet::new())),
         };
 
