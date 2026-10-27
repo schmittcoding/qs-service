@@ -22,7 +22,7 @@ use validator::Validate;
     responses(
         (status = 200, description = "User registered successfully", body = serde_json::Value),
         (status = 400, description = "Validation error"),
-        (status = 409, description = "Username already taken"),
+        (status = 409, description = "Username or email already taken"),
         (status = 500, description = "Registration failed")
     )
 )]
@@ -103,10 +103,14 @@ pub async fn register(
             HttpResponse::Ok().json(json!({"message": "User has been registered successfully"}))
         }
         Err(err) => {
-            log::error!("Registration error: {}", err.to_string());
-            if err.to_string().contains("ERROR_DUPLICATE_USERNAME") {
+            let err_msg = err.to_string();
+            if err_msg.contains("ERROR_DUPLICATE_USERNAME") {
                 HttpResponse::Conflict().json(json!({"message": "Username is already taken"}))
+            } else if err_msg.contains("ERROR_DUPLICATE_EMAIL") {
+                HttpResponse::Conflict()
+                    .json(json!({"message": "Email is already registered to another account"}))
             } else {
+                log::error!("Registration error: {}", err_msg);
                 HttpResponse::InternalServerError().json(json!({"message": "Registration failed"}))
             }
         }
