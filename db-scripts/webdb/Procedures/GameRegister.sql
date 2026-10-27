@@ -16,6 +16,7 @@ CREATE OR ALTER PROCEDURE [dbo].[GameRegister]
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET XACT_ABORT ON;
 
     IF @RanDatabaseName IS NULL OR LTRIM(RTRIM(@RanDatabaseName)) = ''
     BEGIN
@@ -36,6 +37,14 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRANSACTION;
+
+        -- UPDLOCK + HOLDLOCK serializes concurrent registrations for the same email
+        -- so parallel requests cannot both pass the check before either inserts.
+        IF EXISTS (
+            SELECT 1 FROM dbo.WebUser WITH (UPDLOCK, HOLDLOCK)
+            WHERE UserEmail = @UserEmail
+        )
+            THROW 50001, 'ERROR_DUPLICATE_EMAIL', 1;
 
         DECLARE @sql NVARCHAR(MAX);
         DECLARE @NewUserNum INT;

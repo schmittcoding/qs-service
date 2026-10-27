@@ -135,10 +135,9 @@ impl WebUserTrait for WebDB {
         let password_exposed = password.expose_secret();
         let pincode_exposed = pincode.expose_secret();
 
-        // Use a transaction for registration to ensure atomicity
-        let sql = "BEGIN TRANSACTION; \
-                  EXEC GameRegister @UserFullName=@P1, @UserID=@P2, @UserPass=@P3, @UserPin=@P4, @UserEmail=@P5, @RanDatabaseName=@P6; \
-                  COMMIT TRANSACTION;";
+        // GameRegister manages its own transaction; wrapping it here would leave a
+        // mismatched transaction count when the procedure rolls back on a failed check.
+        let sql = "EXEC GameRegister @UserFullName=@P1, @UserID=@P2, @UserPass=@P3, @UserPin=@P4, @UserEmail=@P5, @RanDatabaseName=@P6";
 
         let stream = match client
             .query(
